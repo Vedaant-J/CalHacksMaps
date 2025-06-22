@@ -5,6 +5,7 @@ const SmartVoiceInput = ({ onVoiceResult, isLoading }) => {
   const [transcript, setTranscript] = useState('');
   const [isSupported, setIsSupported] = useState(false);
   const [parsedData, setParsedData] = useState({ origin: '', destination: '', semanticQuery: '' });
+  const [resolutionInfo, setResolutionInfo] = useState(null);
   const recognitionRef = useRef(null);
   const [isParsing, setIsParsing] = useState(false);
 
@@ -79,6 +80,35 @@ const SmartVoiceInput = ({ onVoiceResult, isLoading }) => {
       // Update parent component with parsed data
       onVoiceResult(parsed);
       setParsedData(parsed);
+      
+      // Handle resolution information
+      if (parsed.resolved) {
+        const methods = parsed.resolution_methods || [parsed.resolution_method];
+        const resolutionMessages = [];
+        
+        if (methods.includes('origin_resolution')) {
+          resolutionMessages.push(`Resolved origin from "${parsed.original_origin}" to "${parsed.origin}"`);
+        }
+        if (methods.includes('destination_resolution')) {
+          resolutionMessages.push(`Resolved destination from "${parsed.original_destination}" to "${parsed.destination}"`);
+        }
+        if (methods.includes('nearby_search')) {
+          resolutionMessages.push('Found nearby similar location');
+        }
+        if (methods.includes('broad_search')) {
+          resolutionMessages.push(`Used broad search: "${parsed.search_used}"`);
+        }
+        
+        setResolutionInfo({
+          methods: methods,
+          messages: resolutionMessages,
+          searchUsed: parsed.search_used,
+          originalOrigin: parsed.original_origin,
+          originalDestination: parsed.original_destination
+        });
+      } else {
+        setResolutionInfo(null);
+      }
 
     } catch (error) {
       console.error('Failed to parse voice command with backend:', error);
@@ -121,6 +151,7 @@ const SmartVoiceInput = ({ onVoiceResult, isLoading }) => {
   const clearTranscript = () => {
     setTranscript('');
     setParsedData({ origin: '', destination: '', semanticQuery: '' });
+    setResolutionInfo(null);
     onVoiceResult({ origin: '', destination: '', query: '' });
   };
 
@@ -203,6 +234,27 @@ const SmartVoiceInput = ({ onVoiceResult, isLoading }) => {
           <div className="parsed-item">
             <strong>Search:</strong> {parsedData.semanticQuery}
           </div>
+        </div>
+      )}
+      
+      {resolutionInfo && (
+        <div className="resolution-info">
+          <div className="resolution-badge">
+            <span className="resolution-icon">��</span>
+            <span>Resolved Vague Locations</span>
+          </div>
+          <div className="resolution-messages">
+            {resolutionInfo.messages.map((message, index) => (
+              <div key={index} className="resolution-message">
+                {message}
+              </div>
+            ))}
+          </div>
+          {resolutionInfo.searchUsed && (
+            <div className="resolution-details">
+              <small>Search used: "{resolutionInfo.searchUsed}"</small>
+            </div>
+          )}
         </div>
       )}
     </div>

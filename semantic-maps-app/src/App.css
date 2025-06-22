@@ -247,4 +247,192 @@
 /* This is needed for the PlaceAutocomplete component to render correctly */
 .pac-container {
     z-index: 1051 !important;
+}
+
+/* Voice Input Styles */
+.voice-input-section {
+  margin-top: 20px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 1px solid #e9ecef;
+}
+
+.smart-voice-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.voice-input-area {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.voice-textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.3s;
+}
+
+.voice-textarea:focus {
+  outline: none;
+  border-color: #007BFF;
+}
+
+.voice-textarea:disabled {
+  background-color: #f5f5f5;
+  color: #666;
+}
+
+.voice-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.voice-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #007BFF;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.voice-button:hover:not(:disabled) {
+  background: #0056b3;
+  transform: translateY(-1px);
+}
+
+.voice-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.voice-button.listening {
+  background: #dc3545;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.voice-icon {
+  font-size: 16px;
+}
+
+.clear-button {
+  padding: 10px 12px;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.clear-button:hover {
+  background: #5a6268;
+}
+
+.test-button {
+  padding: 10px 16px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.test-button:hover {
+  background: #218838;
+}
+
+.parsed-data {
+  background: #e8f4fd;
+  border: 1px solid #bee5eb;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 8px;
+}
+
+.parsed-item {
+  margin-bottom: 8px;
+}
+
+.parsed-item:last-child {
+  margin-bottom: 0;
+}
+
+.parsed-item strong {
+  color: #0c5460;
+}
+
+/* Resolution Information Styles */
+.resolution-info {
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 8px;
+}
+
+.resolution-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #856404;
+  margin-bottom: 8px;
+}
+
+.resolution-icon {
+  font-size: 16px;
+}
+
+.resolution-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.resolution-message {
+  font-size: 13px;
+  color: #856404;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  border-left: 3px solid #ffc107;
+}
+
+.resolution-details {
+  color: #856404;
+  font-size: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.resolution-details small {
+  font-style: italic;
 } 
