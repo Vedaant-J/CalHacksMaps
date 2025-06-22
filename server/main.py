@@ -163,14 +163,17 @@ def calculate_recommendation_score(place: Dict[str, Any], query: str, route_dist
     return score
 
 
-def get_enhanced_gemini_recommendations(places: List[Dict], query: str, route_points: List[Tuple[float, float]]) -> Dict[str, Any]:
-    """Enhanced AI recommendations considering route proximity and comprehensive scoring."""
+def get_gemini_recommendations_from_raw_data(places: List[Dict], query: str, route_points: List[Tuple[float, float]]) -> Dict[str, Any]:
+    """Let Gemini analyze raw place data and make recommendations without pre-sorting."""
     try:
         genai.configure(api_key=GEMINI_API_KEY)
         gemini = genai.GenerativeModel("gemini-1.5-pro")
         
-        # Calculate scores and distances for all places
-        enhanced_places = []
+        print(f"DEBUG: Sending {len(places)} places to Gemini for analysis in original order")
+        print(f"DEBUG: Route has {len(route_points)} points for distance calculation")
+        
+        # Add route distances to places but keep original order
+        places_with_distances = []
         for i, place in enumerate(places):
             place_lat = place.get("geometry", {}).get("location", {}).get("lat")
             place_lng = place.get("geometry", {}).get("location", {}).get("lng")
@@ -179,27 +182,24 @@ def get_enhanced_gemini_recommendations(places: List[Dict], query: str, route_po
             if place_lat and place_lng:
                 route_distance = min_distance_to_route(place_lat, place_lng, route_points)
             
-            score = calculate_recommendation_score(place, query, route_distance)
+            place_copy = place.copy()
+            place_copy["route_distance_m"] = route_distance
+            places_with_distances.append(place_copy)
             
-            enhanced_places.append({
-                **place,
-                "route_distance_m": route_distance,
-                "recommendation_score": score,
-                "place_index": i
-            })
+            # Log detailed info for first few places
+            if i < 3:
+                print(f"  Place {i+1}: {place.get('name', 'Unknown')}")
+                print(f"    Rating: {place.get('rating', 'N/A')}, Reviews: {place.get('user_ratings_total', 'N/A')}")
+                print(f"    Distance from route: {route_distance:.0f}m" if route_distance != float('inf') else "    Distance: Unknown")
         
-        # Sort by recommendation score
-        enhanced_places.sort(key=lambda x: x.get("recommendation_score", 0), reverse=True)
-        top_candidates = enhanced_places[:8]  # Top 8 for AI analysis
-        
-        # Prepare enhanced summary for Gemini
+        # Prepare summary for Gemini - in original order as Place 1, Place 2, etc.
         places_summary = []
-        for place in top_candidates:
-            summary = f"Place {place['place_index']+1}: {place.get('name', 'Unknown')}\n"
+        for i, place in enumerate(places_with_distances):
+            summary = f"Place {i+1}: {place.get('name', 'Unknown')}\n"
             summary += f"  • Rating: {place.get('rating', 'N/A')} stars ({place.get('user_ratings_total', 'N/A')} reviews)\n"
             summary += f"  • Price: {'$' * (place.get('price_level', 0) or 1)}\n"
             summary += f"  • Distance from route: {place.get('route_distance_m', 0):.0f}m\n"
-            summary += f"  • Types: {', '.join(place.get('types', [])[:3])}\n"
+            summary += f"  • Types: {', '.join(place.get('types', [])[:3]) if isinstance(place.get('types'), list) else place.get('types', 'N/A')}\n"
             summary += f"  • Address: {place.get('formatted_address', 'N/A')}\n"
             
             # Add opening hours info
@@ -217,24 +217,23 @@ def get_enhanced_gemini_recommendations(places: List[Dict], query: str, route_po
             if amenities:
                 summary += f"  • Amenities: {', '.join(amenities)}\n"
             
-            summary += f"  • Auto Score: {place.get('recommendation_score', 0):.1f}/100\n"
             places_summary.append(summary)
         
         prompt = f"""You are a travel expert analyzing places for: "{query}"
 
-Here are the top-ranked candidates (pre-scored by algorithm):
+Here are ALL the candidate places in order (Place 1 = index 0, Place 2 = index 1, etc.):
 
 {chr(10).join(places_summary)}
 
-Consider:
+Analyze these places and consider:
 1. Relevance to the specific query "{query}"
 2. Overall quality (rating, reviews, reputation)  
 3. Proximity to the route (closer is better for travellers)
 4. Value and appropriateness (price, amenities, hours)
 5. Practical factors (parking, accessibility, etc.)
 
-Select the TOP 3 places and provide compelling reasons why each is perfect for this query.
-Focus on what makes each place special and relevant to "{query}".
+Select the TOP 3 places that best match "{query}" and provide compelling reasons.
+IMPORTANT: Use 0-based indexing (Place 1 = index 0, Place 2 = index 1, Place 3 = index 2, etc.).
 
 Respond with JSON:
 {{
@@ -254,21 +253,43 @@ Respond with JSON:
     ]
 }}"""
 
+        print("=" * 80)
+        print("GEMINI PROMPT FOR RECOMMENDATIONS:")
+        print("=" * 80)
+        print(prompt)
+        print("=" * 80)
+        print(f"Query: {query}")
+        print(f"Number of places being analyzed: {len(places_with_distances)}")
+        print("PLACES ORDER FOR GEMINI:")
+        for i, place in enumerate(places_with_distances):
+            print(f"  Index {i}: {place.get('name', 'Unknown')} - {place.get('route_distance_m', 'N/A'):.0f}m")
+        print("=" * 80)
+
         ai_response = gemini.generate_content(prompt)
         ai_text = ai_response.text.strip().replace("```json", "").replace("```", "")
-        print(f"Enhanced Gemini recommendations: {ai_text}")
+        
+        print("GEMINI RESPONSE:")
+        print("=" * 80)
+        print(ai_text)
+        print("=" * 80)
         
         recommendations = json.loads(ai_text)
-        return recommendations
+        
+        # Return both the recommendations and the places with distances for proper mapping
+        return {
+            "recommendations": recommendations.get("recommendations", []),
+            "analyzed_places": places_with_distances
+        }
         
     except Exception as exc:
-        print(f"Enhanced Gemini recommendations error: {exc}")
-        # Fallback to score-based selection
+        print(f"Gemini recommendations error: {exc}")
+        # Fallback to simple rating-based selection
         return {
             "recommendations": [
-                {"place_index": i, "reason": f"Highly rated with {place.get('rating', 'N/A')} stars and close to your route"}
+                {"place_index": i, "reason": f"Highly rated with {place.get('rating', 'N/A')} stars"}
                 for i, place in enumerate(places[:3])
-            ]
+            ],
+            "analyzed_places": places
         }
 
 
@@ -401,13 +422,12 @@ def find_places_on_route(route_query: RouteQuery) -> Dict[str, Any]:
                 place_id=place_id,
                 fields=[
                     'place_id', 'name', 'geometry', 'rating', 'user_ratings_total',
-                    'price_level', 'opening_hours', 'photos', 'formatted_address',
-                    'formatted_phone_number', 'website', 'types', 'business_status',
+                    'price_level', 'opening_hours', 'photo', 'formatted_address',
+                    'formatted_phone_number', 'website', 'type', 'business_status',
                     'current_opening_hours', 'takeout', 'delivery', 'dine_in',
-                    'serves_beer', 'serves_wine', 'serves_coffee', 'serves_lunch',
+                    'serves_beer', 'serves_wine', 'serves_lunch',
                     'serves_dinner', 'serves_vegetarian_food', 'wheelchair_accessible_entrance',
-                    'serves_breakfast', 'serves_brunch', 'good_for_children',
-                    'good_for_groups', 'outdoor_seating', 'reviews', 'editorial_summary'
+                    'serves_breakfast', 'serves_brunch', 'reviews', 'editorial_summary'
                 ]
             )
             
@@ -415,8 +435,9 @@ def find_places_on_route(route_query: RouteQuery) -> Dict[str, Any]:
             
             # Get photo URL if available
             photo_url = None
-            if detailed_place.get('photos'):
-                photo_reference = detailed_place['photos'][0].get('photo_reference')
+            photos = detailed_place.get('photos', [])
+            if photos and len(photos) > 0:
+                photo_reference = photos[0].get('photo_reference')
                 if photo_reference:
                     photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference={photo_reference}&key={GOOGLE_API_KEY}"
             
@@ -437,7 +458,7 @@ def find_places_on_route(route_query: RouteQuery) -> Dict[str, Any]:
                 "website": detailed_place.get("website"),
                 "photo_url": photo_url,
                 "opening_hours": opening_hours,
-                "types": detailed_place.get("types", []),
+                "types": detailed_place.get("type", []),
                 # Enhanced data for better recommendations
                 "business_status": detailed_place.get("business_status"),
                 "current_opening_hours": detailed_place.get("current_opening_hours", {}),
@@ -495,31 +516,38 @@ def find_places_on_route(route_query: RouteQuery) -> Dict[str, Any]:
     
     print(f"Filtered to {len(route_filtered_candidates)} places within {MAX_ROUTE_DISTANCE/1000}km of route")
     
-    # --- Step 5: Use enhanced Gemini recommendations ---
-    gemini_recommendations = get_enhanced_gemini_recommendations(route_filtered_candidates, route_query.query, route_points)
+    # --- Step 5: Use Gemini to analyze raw data and make recommendations ---
+    gemini_result = get_gemini_recommendations_from_raw_data(route_filtered_candidates, route_query.query, route_points)
+    gemini_recommendations = gemini_result.get("recommendations", [])
+    analyzed_places = gemini_result.get("analyzed_places", route_filtered_candidates)
     
-    # Extract recommended places
+    # Extract recommended places using analyzed_places to ensure correct mapping
     recommended_places = []
-    for rec in gemini_recommendations.get("recommendations", []):
+    print("MAPPING GEMINI RECOMMENDATIONS:")
+    for i, rec in enumerate(gemini_recommendations):
         place_index = rec.get("place_index")
         reason = rec.get("reason")
         
-        if place_index < len(route_filtered_candidates):
-            place = route_filtered_candidates[place_index].copy()
+        print(f"  Rec {i+1}: Gemini wants index {place_index}")
+        if place_index < len(analyzed_places):
+            place = analyzed_places[place_index].copy()
             place["recommendation_reason"] = reason
             recommended_places.append(place)
+            print(f"    -> Mapped to: {place.get('name', 'Unknown')} - {place.get('route_distance_m', 'N/A'):.0f}m")
+        else:
+            print(f"    -> ERROR: Index {place_index} out of range (max: {len(analyzed_places)-1})")
     
-    # Return structured response with all places and recommendations
+    # Return structured response with all places and recommendations  
     response = {
         "query": route_query.query,
         "search_location_type": "destination" if search_location == (end_lat, end_lng) else "start" if search_location == (start_lat, start_lng) else "midpoint",
-        "all_places": route_filtered_candidates,
+        "all_places": analyzed_places,  # Use analyzed_places instead for consistency
         "recommended_places": recommended_places,
-        "total_found": len(route_filtered_candidates),
+        "total_found": len(analyzed_places),
         "route_analysis": {
             "route_points_extracted": len(route_points),
             "original_places_found": len(candidates),
-            "places_within_route_proximity": len(route_filtered_candidates),
+            "places_within_route_proximity": len(analyzed_places),
             "max_distance_km": MAX_ROUTE_DISTANCE / 1000
         }
     }
