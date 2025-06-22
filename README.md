@@ -89,13 +89,19 @@ A full-stack web application that overlays semantic, conversational search onto 
 ## Usage
 
 1. **Open the app**: http://localhost:3000
-2. **Plan a route**: Enter origin and destination
-3. **Semantic search**: Ask questions like:
+2. **Plan a route**: Enter origin and destination using the input fields
+3. **Semantic search**: Type what you're looking for in the search field:
    - "Find coffee shops along the way"
    - "Good restaurants for lunch"
    - "Gas stations near the highway"
-4. **View results**: See places marked on the map
-5. **Add to route**: Click markers to add stops
+4. **Voice input** (Optional): Use the voice section below to fill all fields at once:
+   - "I want to go from costa verde boulevard in san diego to price center in UC San Diego and I want pizza on the way"
+   - "Take me from downtown LA to Hollywood and find coffee shops along the route"
+   - "Navigate from San Francisco airport to downtown and show me restaurants with outdoor seating"
+5. **Plan Route**: Click "Plan Route" after entering addresses
+6. **Find Places**: Click "Find Places" to search based on your query
+7. **View results**: See places marked on the map
+8. **Add to route**: Click markers to add stops
 
 ## API Endpoints
 
@@ -127,6 +133,8 @@ A full-stack web application that overlays semantic, conversational search onto 
 
 ## Features
 
+- ✅ **Traditional Input**: Separate fields for origin, destination, and semantic search
+- ✅ **Smart Voice Parsing**: Optional voice input that can fill all fields at once
 - ✅ **Semantic Search**: Natural language queries powered by Gemini Pro
 - ✅ **Route Planning**: Google Maps integration with directions
 - ✅ **Smart Filtering**: AI converts queries to relevant place searches  
@@ -143,8 +151,9 @@ A full-stack web application that overlays semantic, conversational search onto 
 
 ### Frontend (React)
 - **Maps Integration**: `@vis.gl/react-google-maps` for modern React integration
+- **Hybrid Input System**: Traditional form inputs with optional smart voice parsing
 - **State Management**: React hooks for route and places data
-- **UI Components**: Clean, responsive interface
+- **UI Components**: Clean, responsive interface with voice input section
 - **Real-time Updates**: Dynamic map updates as user interacts
 
 ## Troubleshooting
@@ -155,6 +164,7 @@ A full-stack web application that overlays semantic, conversational search onto 
 2. **API Key errors**: Ensure both API keys are properly configured in .env files
 3. **CORS errors**: Backend runs on :8000, frontend on :3000 - CORS is configured
 4. **Maps not loading**: Check `REACT_APP_GOOGLE_MAPS_API_KEY` in frontend .env
+5. **Voice input not working**: Ensure you're using Chrome, Edge, or Safari and have granted microphone permissions
 
 ### Development Tips
 

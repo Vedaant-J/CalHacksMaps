@@ -45,6 +45,11 @@ class RouteQuery(BaseModel):
     route: Dict[str, Any]  # Google DirectionsResult object (JSON-serialised)
 
 
+class VoiceQuery(BaseModel):
+    """Expected payload for parsing voice commands."""
+    command: str
+
+
 def determine_search_location(query: str, start_pos: tuple, end_pos: tuple, mid_pos: tuple) -> tuple:
     """Determine where to search based on query constraints."""
     query_lower = query.lower()
@@ -63,7 +68,7 @@ def get_gemini_recommendations(places: List[Dict], query: str) -> Dict[str, Any]
     """Use Gemini to analyze and recommend the best places with explanations."""
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        gemini = genai.GenerativeModel("gemini-pro")
+        gemini = genai.GenerativeModel("gemini-1.5-pro")
         
         # Prepare place data for Gemini
         places_summary = []
@@ -130,6 +135,85 @@ def read_root():
     }
 
 
+@app.post("/api/parse-voice-query")
+def parse_voice_query(voice_query: VoiceQuery):
+    """
+    Parses a natural language voice command into origin, destination, and a semantic query using Google Gemini.
+    """
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured in environment")
+    
+    if genai is None:
+         raise HTTPException(
+            status_code=500,
+            detail="Google Generative AI SDK not installed. Did you install requirements.txt?",
+        )
+
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        gemini = genai.GenerativeModel("gemini-1.5-pro")
+        
+        system_prompt = """You are a highly intelligent travel assistant. Your task is to parse a user's voice command into a structured JSON object. The command will contain a travel route and a search query.
+
+You must identify three key pieces of information:
+1.  `origin`: The starting point of the journey.
+2.  `destination`: The final destination of the journey.
+3.  `semanticQuery`: What the user wants to find or do along the way.
+
+**Rules:**
+- Your response MUST be a valid JSON object and nothing else.
+- If any of the three fields are not present in the user's command, you MUST return an empty string `""` for that field.
+- Do not add any extra explanations, markdown formatting, or text outside of the JSON object.
+
+**Example 1:**
+User command: "I want to go from 8875 Costa Verde Boulevard to the Price Center in San Diego and I want pizza on the way"
+Your response:
+{
+  "origin": "8875 Costa Verde Boulevard",
+  "destination": "the Price Center in San Diego",
+  "semanticQuery": "pizza on the way"
+}
+
+**Example 2:**
+User command: "directions from Los Angeles to Las Vegas"
+Your response:
+{
+  "origin": "Los Angeles",
+  "destination": "Las Vegas",
+  "semanticQuery": ""
+}
+
+**Example 3:**
+User command: "find coffee shops nearby"
+Your response:
+{
+  "origin": "",
+  "destination": "",
+  "semanticQuery": "find coffee shops nearby"
+}
+"""
+        
+        full_prompt = f"{system_prompt}\n\nUser command to parse:\n\"{voice_query.command}\""
+        
+        ai_response = gemini.generate_content(
+            full_prompt,
+            generation_config=genai.types.GenerationConfig(
+                # Enforce JSON output
+                response_mime_type="application/json",
+            )
+        )
+        
+        response_text = ai_response.text
+        print(f"Gemini parsing response: {response_text}")
+        
+        parsed_response = json.loads(response_text)
+        return parsed_response
+
+    except Exception as e:
+        print(f"Error during Gemini parsing: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to parse voice command with Gemini: {e}")
+
+
 @app.post("/api/find-places-on-route")
 def find_places_on_route(route_query: RouteQuery) -> Dict[str, Any]:
     """MVP endpoint: return candidate places that match a semantic query along a route.
@@ -143,12 +227,15 @@ def find_places_on_route(route_query: RouteQuery) -> Dict[str, Any]:
     print(f"Route keys: {list(route_query.route.keys())}")
 
     if not GOOGLE_API_KEY:
+        print(f"here0")
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not configured in environment")
     
     if not GEMINI_API_KEY:
+        print(f"here1")
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured in environment")
 
     if genai is None or googlemaps is None:
+        print(f"here2")
         raise HTTPException(
             status_code=500,
             detail="Required Google SDKs not installed. Did you install requirements.txt?",
@@ -157,7 +244,7 @@ def find_places_on_route(route_query: RouteQuery) -> Dict[str, Any]:
     # --- Step 1: Convert semantic query to text search keywords using Gemini Pro ---
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        gemini = genai.GenerativeModel("gemini-pro")
+        gemini = genai.GenerativeModel("gemini-1.5-pro")
 
         prompt = (
             "You are a geospatial search assistant in a travel planning application.\n"
@@ -173,6 +260,7 @@ def find_places_on_route(route_query: RouteQuery) -> Dict[str, Any]:
         ai_text = ai_response.text.strip().replace("```json", "").replace("```", "")
         print(f"Gemini response: {ai_text}")
         ai_params = json.loads(ai_text)
+        print(f"Gemini response: {ai_params}")
     except Exception as exc:
         print(f"Gemini error: {exc}")
         raise HTTPException(status_code=500, detail=f"Gemini parsing error: {exc}")
@@ -209,7 +297,7 @@ def find_places_on_route(route_query: RouteQuery) -> Dict[str, Any]:
         else:
             raise KeyError("No routes found in route object")
             
-    except (KeyError, IndexError, TypeError) as e:
+    except Exception as e:
         print(f"Route parsing error: {e}")
         print(f"Route structure: {route_query.route}")
         raise HTTPException(status_code=400, detail=f"Invalid route object supplied: {e}")

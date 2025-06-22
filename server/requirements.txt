@@ -1,6 +1,6 @@
 fastapi
-uvicorn[standard]
+pydantic
+uvicorn
 python-dotenv
 google-generativeai
-googlemaps
-pydantic 
+googlemaps 

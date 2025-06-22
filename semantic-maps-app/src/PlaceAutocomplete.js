@@ -11,6 +11,17 @@ const PlaceAutocomplete = ({
   const autocompleteRef = useRef(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
+  // Ensure onChange is always a function
+  const safeOnChange = onChange || (() => {
+    console.warn('PlaceAutocomplete: onChange prop is not provided');
+  });
+
+  // Debug value changes
+  useEffect(() => {
+    console.log(`PlaceAutocomplete ${id}: value prop changed to:`, value);
+    console.log(`PlaceAutocomplete ${id}: onChange prop is:`, typeof onChange);
+  }, [value, id, onChange]);
+
   useEffect(() => {
     const initializeAutocomplete = () => {
       if (!window.google || !window.google.maps || !window.google.maps.places) {
@@ -38,10 +49,10 @@ const PlaceAutocomplete = ({
             
             if (place.formatted_address) {
               console.log('Calling onChange with:', place.formatted_address);
-              onChange(place.formatted_address);
+              safeOnChange(place.formatted_address);
             } else if (place.name) {
               console.log('Calling onChange with name:', place.name);
-              onChange(place.name);
+              safeOnChange(place.name);
             }
           });
         } catch (error) {
@@ -51,13 +62,13 @@ const PlaceAutocomplete = ({
     };
 
     initializeAutocomplete();
-  }, [onChange, id]);
+  }, [safeOnChange, id]);
 
   // Handle manual typing
   const handleInputChange = (e) => {
     const newValue = e.target.value;
     console.log('Manual input change:', newValue);
-    onChange(newValue);
+    safeOnChange(newValue);
   };
 
   return (
@@ -65,7 +76,7 @@ const PlaceAutocomplete = ({
       ref={inputRef}
       id={id}
       type="text"
-      value={value}
+      value={value || ''}
       onChange={handleInputChange}
       placeholder={isLoaded ? placeholder : `${placeholder} (Loading...)`}
       className={className}
