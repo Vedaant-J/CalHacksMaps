@@ -136,7 +136,26 @@ body {
   width: 100%;
 }
 
-.prompt-input {
+.semantic-input-container {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 12px;
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  transition: all 0.2s ease;
+}
+
+.semantic-input-container:focus-within {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.semantic-input-container textarea {
   flex: 1;
   border: none;
   outline: none;
@@ -148,19 +167,12 @@ body {
   color: #333;
   min-height: 60px;
   max-height: 120px;
+  padding: 0;
 }
 
-.prompt-input::placeholder {
+.semantic-input-container textarea::placeholder {
   color: #999;
   font-style: italic;
-}
-
-.semantic-input-container {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
 }
 
 .submit-button {
@@ -632,6 +644,156 @@ body {
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
+/* Generating Animation */
+.generating-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.generating-content {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  padding: 40px;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.generating-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.generating-content p {
+  color: #333;
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+}
+
+/* Route Info Panel */
+.route-info-panel {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  width: 300px;
+  max-height: calc(100vh - 40px);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  overflow-y: auto;
+  z-index: 1000;
+  animation: slideInLeft 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.route-info-panel h4 {
+  color: #333;
+  margin-bottom: 16px;
+  font-size: 18px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.route-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.route-details p {
+  margin: 0;
+  font-size: 14px;
+  color: #333;
+  line-height: 1.4;
+}
+
+.route-details strong {
+  color: #1976d2;
+}
+
+.waypoints-list {
+  margin-top: 8px;
+}
+
+.waypoints-list p {
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #1976d2;
+}
+
+.waypoint-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  border: 1px solid #e9ecef;
+}
+
+.waypoint-item span {
+  font-size: 13px;
+  color: #333;
+  flex: 1;
+}
+
+.remove-waypoint-btn {
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+  margin-left: 8px;
+}
+
+.remove-waypoint-btn:hover {
+  background: #c82333;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .prompt-centered {
@@ -656,6 +818,18 @@ body {
     z-index: 2000;
   }
   
+  .route-info-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+    z-index: 2000;
+  }
+  
   .collapsed-logo {
     bottom: 20px;
   }
@@ -663,6 +837,11 @@ body {
   .logo-icon {
     width: 50px;
     height: 50px;
+  }
+  
+  .generating-content {
+    padding: 30px;
+    margin: 20px;
   }
 }
 

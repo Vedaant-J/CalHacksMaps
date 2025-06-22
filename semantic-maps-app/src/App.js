@@ -21,6 +21,7 @@ function App() {
   const [recommendedPlaces, setRecommendedPlaces] = useState([]);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
   const [currentRoute, setCurrentRoute] = useState(null);
   const [routeStartEnd, setRouteStartEnd] = useState(null);
@@ -34,11 +35,6 @@ function App() {
       return;
     }
 
-    if (!semanticQuery.trim()) {
-      setError('Please enter additional constraints for your search');
-      return;
-    }
-
     setIsPromptSubmitted(true);
     setIsLoading(true);
     setError('');
@@ -47,36 +43,45 @@ function App() {
       // First, plan the route
       setShouldPlanRoute(true);
       
-      // Wait for route to be calculated, then search
-      const checkRouteAndSearch = () => {
-        if (currentRoute) {
-          handleSemanticSearch(currentRoute, semanticQuery);
-        } else {
-          // If route still not calculated after 5 seconds, show error
-          setTimeout(() => {
-            if (!currentRoute) {
-              setError('Failed to calculate route. Please try again.');
-              setIsLoading(false);
-              setIsPromptSubmitted(false);
-            }
-          }, 5000);
-        }
-      };
+      // Wait for route to be calculated
+      await new Promise((resolve, reject) => {
+        const checkRoute = () => {
+          if (currentRoute) {
+            resolve();
+          } else {
+            setTimeout(checkRoute, 100);
+          }
+        };
+        
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          if (!currentRoute) {
+            reject(new Error('Route calculation timeout'));
+          }
+        }, 10000);
+        
+        checkRoute();
+      });
       
-      // Check immediately and also after a short delay
-      checkRouteAndSearch();
-      setTimeout(checkRouteAndSearch, 1000);
+      // If we have constraints, search for places
+      if (semanticQuery.trim()) {
+        setIsGenerating(true);
+        await handleSemanticSearch(currentRoute, semanticQuery);
+        setIsGenerating(false);
+      }
       
     } catch (err) {
-      setError(`Failed to process request: ${err.message}`);
+      console.error('Error in handleSubmit:', err);
+      setError('Failed to calculate route. Please try again.');
       setIsLoading(false);
       setIsPromptSubmitted(false);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleSemanticSearch = async (routeData, query) => {
     if (!routeData || !query.trim()) {
-      setError('Please enter both route and search query');
       return;
     }
 
@@ -122,8 +127,6 @@ function App() {
       }
     } catch (err) {
       setError(`Failed to search places: ${err.message}`);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -146,41 +149,35 @@ function App() {
       place_id: place.place_id
     };
     
-    setWaypoints(prev => [...prev, newWaypoint]);
+    console.log('Adding waypoint:', newWaypoint);
+    setWaypoints(prev => {
+      const newWaypoints = [...prev, newWaypoint];
+      console.log('Updated waypoints:', newWaypoints);
+      return newWaypoints;
+    });
     
     // Clear suggested places and selected place
     setSuggestedPlaces([]);
     setRecommendedPlaces([]);
     setSelectedPlace(null);
     
+    // Re-plan route with new waypoint
+    console.log('Setting shouldPlanRoute to true for new waypoint');
+    setShouldPlanRoute(true);
+    
     alert(`Added ${place.name} to your route!`);
   };
 
-  const handleLogoClick = () => {
-    setIsPromptSubmitted(false);
-    setSuggestedPlaces([]);
-    setRecommendedPlaces([]);
-    setSelectedPlace(null);
-    setError('');
-  };
-
-  const handleExitPrompt = (e) => {
-    // Prevent event bubbling if called from button click
-    if (e) {
-      e.stopPropagation();
-    }
-    setIsPromptSubmitted(false);
-    setSuggestedPlaces([]);
-    setRecommendedPlaces([]);
-    setSelectedPlace(null);
-    setError('');
-  };
-
-  const handleClickOutside = (e) => {
-    // Only handle clicks outside the prompt container
-    if (e.target.classList.contains('click-outside-overlay')) {
-      handleExitPrompt();
-    }
+  const handleRemoveWaypoint = (index) => {
+    console.log('Removing waypoint at index:', index);
+    setWaypoints(prev => {
+      const newWaypoints = prev.filter((_, i) => i !== index);
+      console.log('Updated waypoints after removal:', newWaypoints);
+      return newWaypoints;
+    });
+    // Re-plan route without the removed waypoint
+    console.log('Setting shouldPlanRoute to true for waypoint removal');
+    setShouldPlanRoute(true);
   };
 
   const handleVoiceParsed = (parsedData) => {
@@ -203,6 +200,35 @@ function App() {
 
     if (semantic) {
       setSemanticQuery(semantic);
+    }
+  };
+
+  const handleLogoClick = () => {
+    setIsPromptSubmitted(false);
+    setSuggestedPlaces([]);
+    setRecommendedPlaces([]);
+    setSelectedPlace(null);
+    setError('');
+    setIsGenerating(false);
+  };
+
+  const handleExitPrompt = (e) => {
+    // Prevent event bubbling if called from button click
+    if (e) {
+      e.stopPropagation();
+    }
+    setIsPromptSubmitted(false);
+    setSuggestedPlaces([]);
+    setRecommendedPlaces([]);
+    setSelectedPlace(null);
+    setError('');
+    setIsGenerating(false);
+  };
+
+  const handleClickOutside = (e) => {
+    // Only handle clicks outside the prompt container
+    if (e.target.classList.contains('click-outside-overlay')) {
+      handleExitPrompt();
     }
   };
 
@@ -286,7 +312,7 @@ function App() {
                     value={semanticQuery}
                     onChange={(e) => setSemanticQuery(e.target.value)}
                     onKeyPress={handleKeyPress}
-                    placeholder="What else are you looking for along the way? (e.g., 'coffee shops', 'gas stations', 'restaurants with outdoor seating')"
+                    placeholder="What else are you looking for along the way? (optional - e.g., 'coffee shops', 'gas stations', 'restaurants with outdoor seating')"
                     className="prompt-input"
                     rows={3}
                   />
@@ -294,7 +320,7 @@ function App() {
                 </div>
                 <button 
                   onClick={handleSubmit}
-                  disabled={isLoading || !semanticQuery.trim() || !origin.trim() || !destination.trim()}
+                  disabled={isLoading || !origin.trim() || !destination.trim()}
                   className="submit-button"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -323,6 +349,16 @@ function App() {
             </div>
           )}
 
+          {/* Generating Animation */}
+          {isGenerating && (
+            <div className="generating-overlay">
+              <div className="generating-content">
+                <div className="generating-spinner"></div>
+                <p>Generating AI recommendations...</p>
+              </div>
+            </div>
+          )}
+
           {/* Recommendations Panel */}
           {recommendedPlaces.length > 0 && (
             <div className="recommendations-panel">
@@ -337,6 +373,33 @@ function App() {
                     onAddToRoute={() => handleAddToRoute(place)}
                   />
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Route Info Panel */}
+          {currentRoute && (
+            <div className="route-info-panel">
+              <h4>🗺️ Current Route</h4>
+              <div className="route-details">
+                <p><strong>From:</strong> {origin}</p>
+                <p><strong>To:</strong> {destination}</p>
+                {waypoints.length > 0 && (
+                  <div className="waypoints-list">
+                    <p><strong>Stops:</strong></p>
+                    {waypoints.map((waypoint, index) => (
+                      <div key={index} className="waypoint-item">
+                        <span>{waypoint.name}</span>
+                        <button 
+                          onClick={() => handleRemoveWaypoint(index)}
+                          className="remove-waypoint-btn"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -389,12 +452,21 @@ function MapWithDirections({ origin, destination, suggestedPlaces, recommendedPl
     }
 
     console.log(`Requesting directions from "${origin}" to "${destination}"`);
+    console.log('Waypoints:', waypoints);
+
+    // Format waypoints for Google Maps API
+    const formattedWaypoints = waypoints.map(waypoint => ({
+      location: new window.google.maps.LatLng(waypoint.location.lat, waypoint.location.lng),
+      stopover: waypoint.stopover
+    }));
+
+    console.log('Formatted waypoints:', formattedWaypoints);
 
     directionsService
       .route({
         origin: origin.trim(),
         destination: destination.trim(),
-        waypoints: waypoints || [],
+        waypoints: formattedWaypoints,
         optimizeWaypoints: true,
         travelMode: window.google.maps.TravelMode.DRIVING,
         avoidHighways: false,
@@ -402,6 +474,7 @@ function MapWithDirections({ origin, destination, suggestedPlaces, recommendedPl
       })
       .then((result) => {
         console.log('Directions request successful');
+        console.log('Route result:', result);
         
         // Set the directions
         directionsRenderer.setDirections(result);
@@ -471,6 +544,25 @@ function MapWithDirections({ origin, destination, suggestedPlaces, recommendedPl
           />
         </>
       )}
+
+      {/* Waypoint Markers */}
+      {waypoints.map((waypoint, index) => (
+        <Marker
+          key={`waypoint-${index}`}
+          position={waypoint.location}
+          title={`Stop ${index + 1}: ${waypoint.name}`}
+          icon={{
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+              <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="16" cy="16" r="14" fill="#FF6B35" stroke="#E55A2B" stroke-width="2"/>
+                <text x="16" y="20" text-anchor="middle" fill="white" font-size="12" font-weight="bold">${index + 1}</text>
+              </svg>
+            `),
+            scaledSize: window.google ? new window.google.maps.Size(32, 32) : null,
+            anchor: window.google ? new window.google.maps.Point(16, 16) : null
+          }}
+        />
+      ))}
 
       {/* Render recommended places with special markers */}
       {recommendedPlaces.map((place, index) => (
