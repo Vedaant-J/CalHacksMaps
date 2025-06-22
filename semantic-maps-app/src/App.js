@@ -1,7 +1,8 @@
 /* eslint-disable no-undef */
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { APIProvider, Map, Marker, InfoWindow, useMap } from '@vis.gl/react-google-maps';
 import PlaceAutocomplete from './PlaceAutocomplete';
+import VoiceInput from './VoiceInput';
 import './App.css';
 
 // Get API key from environment variable
@@ -15,7 +16,7 @@ function App() {
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [semanticQuery, setSemanticQuery] = useState('');
-  const [mapCenter, setMapCenter] = useState({ lat: 37.7749, lng: -122.4194 }); // San Francisco default
+  const [mapCenter] = useState({ lat: 37.7749, lng: -122.4194 }); // San Francisco default
   const [suggestedPlaces, setSuggestedPlaces] = useState([]);
   const [recommendedPlaces, setRecommendedPlaces] = useState([]);
   const [selectedPlace, setSelectedPlace] = useState(null);
@@ -25,7 +26,6 @@ function App() {
   const [routeStartEnd, setRouteStartEnd] = useState(null);
   const [waypoints, setWaypoints] = useState([]);
   const [shouldPlanRoute, setShouldPlanRoute] = useState(false);
-  const [showTraffic, setShowTraffic] = useState(true);
   const [isPromptSubmitted, setIsPromptSubmitted] = useState(false);
 
   const handleSubmit = async () => {
@@ -107,7 +107,7 @@ function App() {
         
         // Simple client-side recommendation: pick top 3 by rating
         const sortedByRating = [...data].sort((a, b) => (b.rating || 0) - (a.rating || 0));
-        const topRecommendations = sortedByRating.slice(0, 3).map((place, index) => ({
+        const topRecommendations = sortedByRating.slice(0, 3).map((place) => ({
           ...place,
           recommendation_reason: `High-rated choice with ${place.rating || 'N/A'} stars and ${place.user_ratings_total || 'many'} reviews`
         }));
@@ -156,18 +156,6 @@ function App() {
     alert(`Added ${place.name} to your route!`);
   };
 
-  const handleRemoveWaypoint = (index) => {
-    setWaypoints(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handlePlanRoute = () => {
-    if (!origin.trim() || !destination.trim()) {
-      alert('Please enter both origin and destination');
-      return;
-    }
-    setShouldPlanRoute(true);
-  };
-
   const handleLogoClick = () => {
     setIsPromptSubmitted(false);
     setSuggestedPlaces([]);
@@ -192,6 +180,29 @@ function App() {
     // Only handle clicks outside the prompt container
     if (e.target.classList.contains('click-outside-overlay')) {
       handleExitPrompt();
+    }
+  };
+
+  const handleVoiceParsed = (parsedData) => {
+    console.log('Voice parsed data:', parsedData);
+    
+    // Update the state with parsed data
+    if (parsedData.origin) {
+      setOrigin(parsedData.origin);
+    }
+    if (parsedData.destination) {
+      setDestination(parsedData.destination);
+    }
+    
+    // Accept multiple possible keys for semantic query to make it robust
+    const semantic =
+      parsedData.semanticQuery ||
+      parsedData.semanticquery ||
+      parsedData.semantic_query ||
+      '';
+
+    if (semantic) {
+      setSemanticQuery(semantic);
     }
   };
 
@@ -224,7 +235,6 @@ function App() {
                 waypoints={waypoints}
                 shouldPlanRoute={shouldPlanRoute}
                 onRoutePlanned={() => setShouldPlanRoute(false)}
-                showTraffic={showTraffic}
                 routeStartEnd={routeStartEnd}
               />
             </Map>
@@ -271,14 +281,17 @@ function App() {
               </div>
               
               <div className="prompt-box">
-                <textarea
-                  value={semanticQuery}
-                  onChange={(e) => setSemanticQuery(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="What else are you looking for along the way? (e.g., 'coffee shops', 'gas stations', 'restaurants with outdoor seating')"
-                  className="prompt-input"
-                  rows={3}
-                />
+                <div className="semantic-input-container">
+                  <textarea
+                    value={semanticQuery}
+                    onChange={(e) => setSemanticQuery(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="What else are you looking for along the way? (e.g., 'coffee shops', 'gas stations', 'restaurants with outdoor seating')"
+                    className="prompt-input"
+                    rows={3}
+                  />
+                  <VoiceInput onVoiceParsed={handleVoiceParsed} />
+                </div>
                 <button 
                   onClick={handleSubmit}
                   disabled={isLoading || !semanticQuery.trim() || !origin.trim() || !destination.trim()}
@@ -333,7 +346,7 @@ function App() {
   );
 }
 
-function MapWithDirections({ origin, destination, suggestedPlaces, recommendedPlaces, selectedPlace, onPlaceSelect, onAddToRoute, onRouteCalculated, onRouteStartEndCalculated, waypoints, shouldPlanRoute, onRoutePlanned, showTraffic, routeStartEnd }) {
+function MapWithDirections({ origin, destination, suggestedPlaces, recommendedPlaces, selectedPlace, onPlaceSelect, onAddToRoute, onRouteCalculated, onRouteStartEndCalculated, waypoints, shouldPlanRoute, onRoutePlanned, routeStartEnd }) {
   const map = useMap();
   const [directionsService, setDirectionsService] = useState(null);
   const [directionsRenderer, setDirectionsRenderer] = useState(null);

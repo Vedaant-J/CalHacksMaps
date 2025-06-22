@@ -45,6 +45,11 @@ class RouteQuery(BaseModel):
     route: Dict[str, Any]  # Google DirectionsResult object (JSON-serialised)
 
 
+class VoiceQuery(BaseModel):
+    """Expected payload for parsing voice commands."""
+    command: str
+
+
 def determine_search_location(query: str, start_pos: tuple, end_pos: tuple, mid_pos: tuple) -> tuple:
     """Determine where to search based on query constraints."""
     query_lower = query.lower()
@@ -317,3 +322,422 @@ def find_places_on_route(route_query: RouteQuery) -> Dict[str, Any]:
 
     print(f"Returning {len(candidates)} total places with {len(recommended_places)} recommendations")
     return response 
+
+
+@app.post("/api/parse-voice-query")
+def parse_voice_query(voice_query: VoiceQuery):
+    """
+    Parses a natural language voice command into origin, destination, and a semantic query using Google Gemini.
+    Enhanced to handle vague prompts by using Google Maps API for intelligent guessing.
+    """
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured in environment")
+    
+    if not GOOGLE_API_KEY:
+        raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not configured in environment")
+    
+    if genai is None or googlemaps is None:
+         raise HTTPException(
+            status_code=500,
+            detail="Google SDKs not installed. Did you install requirements.txt?",
+        )
+
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        gemini = genai.GenerativeModel("gemini-1.5-pro")
+        maps_client = googlemaps.Client(key=GOOGLE_API_KEY)
+        
+        # First, try to parse the command normally
+        system_prompt = """You are a highly intelligent travel assistant. Your task is to parse a user's voice command into a structured JSON object. The command will contain a travel route and a search query.
+
+You must identify three key pieces of information:
+1.  `origin`: The starting point of the journey.
+2.  `destination`: The final destination of the journey.
+3.  `semanticQuery`: What the user wants to find or do along the way.
+
+**Rules:**
+- Your response MUST be a valid JSON object and nothing else.
+- If any of the three fields are not present in the user's command, you MUST return an empty string `""` for that field.
+- Do not add any extra explanations, markdown formatting, or text outside of the JSON object.
+- If the command is vague (like "the other one", "another place", etc.), mark it as vague.
+- If any location contains relative terms like "next to", "near", "a ", "an ", mark it as needing resolution.
+
+**Example 1:**
+User command: "I want to go from 8875 Costa Verde Boulevard to the Price Center in San Diego and I want pizza on the way"
+Your response:
+{
+  "origin": "8875 Costa Verde Boulevard",
+  "destination": "the Price Center in San Diego",
+  "semanticQuery": "pizza on the way",
+  "isVague": false
+}
+
+**Example 2:**
+User command: "I'm in McDonalds and want to go to the other one"
+Your response:
+{
+  "origin": "McDonalds",
+  "destination": "the other one",
+  "semanticQuery": "",
+  "isVague": true,
+  "vagueContext": "McDonalds"
+}
+
+**Example 3:**
+User command: "I'm at a McDonald's next to UTC in La Jolla San Diego and want to go to the other one"
+Your response:
+{
+  "origin": "a McDonald's next to UTC in La Jolla San Diego",
+  "destination": "the other one",
+  "semanticQuery": "",
+  "isVague": true,
+  "vagueContext": "McDonald's"
+}
+
+**Example 4:**
+User command: "find coffee shops nearby"
+Your response:
+{
+  "origin": "",
+  "destination": "",
+  "semanticQuery": "find coffee shops nearby",
+  "isVague": false
+}
+"""
+        
+        full_prompt = f"{system_prompt}\n\nUser command to parse:\n\"{voice_query.command}\""
+        
+        ai_response = gemini.generate_content(
+            full_prompt,
+            generation_config=genai.types.GenerationConfig(
+                # Enforce JSON output
+                response_mime_type="application/json",
+            )
+        )
+        
+        response_text = ai_response.text
+        print(f"Gemini parsing response: {response_text}")
+        
+        parsed_response = json.loads(response_text)
+        
+        # Always try to resolve locations, not just when marked as vague
+        print("Checking for locations that need resolution...")
+        resolved_response = resolve_vague_command(parsed_response, voice_query.command, maps_client, gemini)
+        return resolved_response
+
+    except Exception as e:
+        print(f"Error during Gemini parsing: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to parse voice command with Gemini: {e}")
+
+
+def resolve_vague_command(parsed_response: dict, original_command: str, maps_client, gemini):
+    """
+    Resolves vague commands like "the other one" by using Google Maps API to find nearby places.
+    Now handles both vague origins and destinations.
+    """
+    try:
+        origin = parsed_response.get("origin", "")
+        destination = parsed_response.get("destination", "")
+        vague_context = parsed_response.get("vagueContext", "")
+        
+        resolved_origin = origin
+        resolved_destination = destination
+        resolution_methods = []
+        
+        # Handle vague origin
+        if origin and (is_vague_location(origin) or should_resolve_location(origin)):
+            print(f"Resolving origin: {origin}")
+            resolved_origin = resolve_vague_location(origin, maps_client, gemini, "origin")
+            if resolved_origin != origin:
+                resolution_methods.append("origin_resolution")
+        
+        # Handle vague destination
+        if destination and (is_vague_location(destination) or should_resolve_location(destination)):
+            print(f"Resolving destination: {destination}")
+            resolved_destination = resolve_vague_location(destination, maps_client, gemini, "destination", resolved_origin)
+            if resolved_destination != destination:
+                resolution_methods.append("destination_resolution")
+        
+        # If we have a vague destination and some context, try to find nearby places
+        if destination and vague_context and not is_vague_location(destination):
+            # Search for places similar to the context near the origin
+            if resolved_origin:
+                # Try to geocode the origin first
+                try:
+                    geocode_result = maps_client.geocode(resolved_origin)
+                    if geocode_result:
+                        origin_location = geocode_result[0]['geometry']['location']
+                        
+                        # Search for similar places near the origin
+                        search_query = f"{vague_context} near {resolved_origin}"
+                        places_result = maps_client.places(
+                            query=search_query,
+                            location=origin_location,
+                            radius=5000  # 5km radius
+                        )
+                        
+                        if places_result.get('results'):
+                            # Filter out the current location and get the next best match
+                            current_place = None
+                            other_places = []
+                            
+                            for place in places_result['results']:
+                                place_name = place.get('name', '').lower()
+                                if vague_context.lower() in place_name:
+                                    if not current_place:
+                                        current_place = place
+                                    else:
+                                        other_places.append(place)
+                            
+                            # If we found other similar places, use the best one
+                            if other_places:
+                                best_place = max(other_places, key=lambda x: x.get('rating', 0))
+                                resolved_destination = best_place.get('formatted_address', best_place.get('name', ''))
+                                resolution_methods.append("nearby_search")
+                
+                except Exception as e:
+                    print(f"Error resolving vague command with geocoding: {e}")
+        
+        # If we couldn't resolve it with geocoding, try a broader search
+        if vague_context and not is_vague_location(destination):
+            # Use Gemini to generate a better search query
+            resolution_prompt = f"""
+            The user said: "{original_command}"
+            
+            The context is: {vague_context}
+            
+            Generate a specific search query to find what the user is looking for.
+            For example, if they said "the other McDonalds", search for "McDonalds restaurant".
+            If they said "another coffee shop", search for "coffee shop".
+            
+            Respond with JSON:
+            {{
+                "search_query": "specific search terms",
+                "explanation": "brief explanation of what we're searching for"
+            }}
+            """
+            
+            try:
+                ai_response = gemini.generate_content(resolution_prompt)
+                ai_text = ai_response.text.strip().replace("```json", "").replace("```", "")
+                resolution_params = json.loads(ai_text)
+                
+                search_query = resolution_params.get("search_query", vague_context)
+                
+                # Do a broader search
+                places_result = maps_client.places(
+                    query=search_query,
+                    radius=10000  # 10km radius
+                )
+                
+                if places_result.get('results'):
+                    # Get the best rated place
+                    best_place = max(places_result['results'], key=lambda x: x.get('rating', 0))
+                    resolved_destination = best_place.get('formatted_address', best_place.get('name', ''))
+                    resolution_methods.append("broad_search")
+            
+            except Exception as e:
+                print(f"Error with AI resolution: {e}")
+        
+        # Return resolved response if any resolution occurred
+        if resolution_methods:
+            return {
+                "origin": resolved_origin,
+                "destination": resolved_destination,
+                "semanticQuery": parsed_response.get("semanticQuery", ""),
+                "resolved": True,
+                "resolution_methods": resolution_methods,
+                "original_origin": origin if origin != resolved_origin else None,
+                "original_destination": destination if destination != resolved_destination else None
+            }
+        
+        # If all else fails, return the original parsed response
+        return parsed_response
+        
+    except Exception as e:
+        print(f"Error resolving vague command: {e}")
+        return parsed_response
+
+
+def is_vague_location(location: str) -> bool:
+    """
+    Determines if a location string is vague and needs resolution.
+    """
+    vague_indicators = [
+        "here", "there", "this place", "that place", "nearby", "around here",
+        "somewhere", "anywhere", "the mall", "the store", "the restaurant",
+        "my location", "current location", "where I am", "where I'm at",
+        "a ", "an ", "the other", "another", "different", "next to", "near",
+        "close to", "across from", "behind", "in front of"
+    ]
+    
+    location_lower = location.lower()
+    
+    # Check for vague indicators
+    for indicator in vague_indicators:
+        if indicator in location_lower:
+            return True
+    
+    # Check for very short or generic terms
+    if len(location.strip()) < 5:
+        return True
+    
+    # Check for common vague patterns
+    vague_patterns = [
+        r"^[a-z]+\s+(place|location|area|spot)$",
+        r"^(the|a|an)\s+[a-z]+$",
+        r"^[a-z]+\s+(nearby|around|close)$",
+        r".*\s+(next to|near|close to|across from|behind|in front of)\s+.*",
+        r"^[a-z]+\s+[a-z]+\s+(in|at|near)\s+.*"
+    ]
+    
+    import re
+    for pattern in vague_patterns:
+        if re.match(pattern, location_lower):
+            return True
+    
+    return False
+
+
+def should_resolve_location(location: str) -> bool:
+    """
+    Determines if a location should be resolved, even if not strictly vague.
+    This catches cases like "a McDonald's next to UTC" that need geocoding.
+    """
+    location_lower = location.lower()
+    
+    # Check if it contains relative positioning terms
+    relative_terms = [
+        "next to", "near", "close to", "across from", "behind", 
+        "in front of", "beside", "adjacent to", "a ", "an "
+    ]
+    
+    for term in relative_terms:
+        if term in location_lower:
+            return True
+    
+    # Check if it's a business name with location context
+    business_patterns = [
+        r"^[a-z]+\s+(in|at|near)\s+.*",
+        r".*\s+(in|at|near)\s+[a-z]+\s+[a-z]+.*"
+    ]
+    
+    import re
+    for pattern in business_patterns:
+        if re.match(pattern, location_lower):
+            return True
+    
+    return False
+
+
+def resolve_vague_location(location: str, maps_client, gemini, location_type: str, reference_location: str = None) -> str:
+    """
+    Resolves a vague location to a specific address using Google Maps API.
+    
+    Args:
+        location: The vague location string
+        maps_client: Google Maps client
+        gemini: Gemini AI client
+        location_type: "origin" or "destination"
+        reference_location: Optional reference location for context
+    """
+    try:
+        # First, try to geocode the location directly
+        try:
+            geocode_result = maps_client.geocode(location)
+            if geocode_result:
+                resolved_location = geocode_result[0]['formatted_address']
+                print(f"Direct geocoding resolved '{location}' to '{resolved_location}'")
+                return resolved_location
+        except Exception as e:
+            print(f"Direct geocoding failed for '{location}': {e}")
+        
+        # Use Gemini to generate a better search query for the location
+        context_prompt = ""
+        if reference_location:
+            context_prompt = f" The user is currently at or near: {reference_location}"
+        
+        resolution_prompt = f"""
+        The user mentioned a {location_type}: "{location}"{context_prompt}
+        
+        Generate a specific search query to find this location. Be smart about extracting the key business name and location.
+        Examples:
+        - "a McDonald's next to UTC in La Jolla San Diego" → "McDonald's UTC La Jolla San Diego"
+        - "I'm at the mall" → "shopping mall"
+        - "I'm near Starbucks" → "Starbucks coffee shop"
+        - "I'm at the restaurant" → "restaurant"
+        - "I'm here" → "current location" (if no context)
+        - "the McDonald's next to the gas station" → "McDonald's gas station"
+        
+        Respond with JSON:
+        {{
+            "search_query": "specific search terms",
+            "location_type": "business|landmark|area|current_location",
+            "explanation": "brief explanation"
+        }}
+        """
+        
+        ai_response = gemini.generate_content(resolution_prompt)
+        ai_text = ai_response.text.strip().replace("```json", "").replace("```", "")
+        resolution_params = json.loads(ai_text)
+        
+        search_query = resolution_params.get("search_query", location)
+        location_type_ai = resolution_params.get("location_type", "business")
+        
+        # If it's "current_location", we might need to handle this differently
+        if location_type_ai == "current_location":
+            # For now, return a generic "Current Location" - in a real app, you'd get GPS
+            return "Current Location"
+        
+        # Search for the location
+        search_params = {
+            "query": search_query,
+            "radius": 10000  # 10km radius
+        }
+        
+        # If we have a reference location, bias the search towards it
+        if reference_location:
+            try:
+                geocode_result = maps_client.geocode(reference_location)
+                if geocode_result:
+                    reference_coords = geocode_result[0]['geometry']['location']
+                    search_params["location"] = reference_coords
+                    search_params["radius"] = 5000  # Smaller radius when we have context
+            except Exception as e:
+                print(f"Error geocoding reference location: {e}")
+        
+        places_result = maps_client.places(**search_params)
+        
+        if places_result.get('results'):
+            # Get the best rated place
+            best_place = max(places_result['results'], key=lambda x: x.get('rating', 0))
+            resolved_location = best_place.get('formatted_address', best_place.get('name', ''))
+            
+            print(f"Places API resolved '{location}' to '{resolved_location}' using search: '{search_query}'")
+            return resolved_location
+        
+        # If no results, try a broader search with just the business name
+        if " " in search_query:
+            # Extract just the business name (first word or two)
+            words = search_query.split()
+            if len(words) >= 2:
+                business_name = " ".join(words[:2])  # Take first two words
+                print(f"Trying broader search with business name: '{business_name}'")
+                
+                broader_result = maps_client.places(
+                    query=business_name,
+                    radius=15000  # Larger radius
+                )
+                
+                if broader_result.get('results'):
+                    best_place = max(broader_result['results'], key=lambda x: x.get('rating', 0))
+                    resolved_location = best_place.get('formatted_address', best_place.get('name', ''))
+                    print(f"Broader search resolved '{location}' to '{resolved_location}'")
+                    return resolved_location
+        
+        # If all else fails, return the original location
+        return location
+        
+    except Exception as e:
+        print(f"Error resolving location '{location}': {e}")
+        return location 
