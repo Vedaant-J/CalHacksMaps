@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 import React, { useState, useCallback } from 'react';
 import { APIProvider, Map, Marker, InfoWindow, useMap } from '@vis.gl/react-google-maps';
 import PlaceAutocomplete from './PlaceAutocomplete';
@@ -25,109 +26,60 @@ function App() {
   const [waypoints, setWaypoints] = useState([]);
   const [shouldPlanRoute, setShouldPlanRoute] = useState(false);
   const [showTraffic, setShowTraffic] = useState(true);
+  const [isPromptSubmitted, setIsPromptSubmitted] = useState(false);
 
-  // Debug state changes
-  const handleOriginChange = (value) => {
-    console.log('Origin changed to:', value);
-    setOrigin(value);
+  const handleSubmit = async () => {
+    if (!origin.trim() || !destination.trim()) {
+      setError('Please enter both origin and destination');
+      return;
+    }
+
+    if (!semanticQuery.trim()) {
+      setError('Please enter additional constraints for your search');
+      return;
+    }
+
+    setIsPromptSubmitted(true);
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      // First, plan the route
+      setShouldPlanRoute(true);
+      
+      // Wait for route to be calculated, then search
+      const checkRouteAndSearch = () => {
+        if (currentRoute) {
+          handleSemanticSearch(currentRoute, semanticQuery);
+        } else {
+          // If route still not calculated after 5 seconds, show error
+          setTimeout(() => {
+            if (!currentRoute) {
+              setError('Failed to calculate route. Please try again.');
+              setIsLoading(false);
+              setIsPromptSubmitted(false);
+            }
+          }, 5000);
+        }
+      };
+      
+      // Check immediately and also after a short delay
+      checkRouteAndSearch();
+      setTimeout(checkRouteAndSearch, 1000);
+      
+    } catch (err) {
+      setError(`Failed to process request: ${err.message}`);
+      setIsLoading(false);
+      setIsPromptSubmitted(false);
+    }
   };
 
-  const handleDestinationChange = (value) => {
-    console.log('Destination changed to:', value);
-    setDestination(value);
-  };
-
-  return (
-    <div className="App">
-      <APIProvider 
-        apiKey={GOOGLE_MAPS_API_KEY}
-        libraries={['places']}
-      >
-        <div className="app-container">
-          {/* Control Panel */}
-          <div className="control-panel">
-            <h1>Semantic Maps Assistant</h1>
-            
-            <RouteInputs
-              origin={origin}
-              destination={destination}
-              semanticQuery={semanticQuery}
-              onOriginChange={handleOriginChange}
-              onDestinationChange={handleDestinationChange}
-              onSemanticQueryChange={setSemanticQuery}
-              onSearch={() => handleSemanticSearch(currentRoute, semanticQuery)}
-              isLoading={isLoading}
-              hasRoute={!!currentRoute}
-              waypoints={waypoints}
-              onRemoveWaypoint={handleRemoveWaypoint}
-              onPlanRoute={handlePlanRoute}
-              showTraffic={showTraffic}
-              onToggleTraffic={() => setShowTraffic(!showTraffic)}
-            />
-            
-            {error && <div className="error-message">{error}</div>}
-          </div>
-
-          {/* Map */}
-                    <div className="map-container">
-            <Map
-              defaultCenter={mapCenter}
-              defaultZoom={10}
-              style={{ width: '100%', height: '100%' }}
-              gestureHandling="greedy"
-              disableDefaultUI={false}
-            >
-              <MapWithDirections
-                origin={origin}
-                destination={destination}
-                center={mapCenter}
-                suggestedPlaces={suggestedPlaces}
-                recommendedPlaces={recommendedPlaces}
-                selectedPlace={selectedPlace}
-                onPlaceSelect={setSelectedPlace}
-                onAddToRoute={handleAddToRoute}
-                onRouteCalculated={setCurrentRoute}
-                onRouteStartEndCalculated={setRouteStartEnd}
-                waypoints={waypoints}
-                shouldPlanRoute={shouldPlanRoute}
-                onRoutePlanned={() => setShouldPlanRoute(false)}
-                showTraffic={showTraffic}
-                routeStartEnd={routeStartEnd}
-              />
-            </Map>
-          </div>
-          
-          {/* Recommendations Panel */}
-          {recommendedPlaces.length > 0 && (
-            <div className="recommendations-panel">
-              <h3>🌟 AI Recommendations</h3>
-              <div className="recommendations-list">
-                {recommendedPlaces.map((place, index) => (
-                  <RecommendationCard
-                    key={place.place_id}
-                    place={place}
-                    rank={index + 1}
-                    onClick={() => setSelectedPlace(place)}
-                    onAddToRoute={() => handleAddToRoute(place)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </APIProvider>
-    </div>
-  );
-
-  async function handleSemanticSearch(routeData, query) {
+  const handleSemanticSearch = async (routeData, query) => {
     if (!routeData || !query.trim()) {
       setError('Please enter both route and search query');
       return;
     }
 
-    setIsLoading(true);
-    setError('');
-    
     try {
       const response = await fetch('http://localhost:8000/api/find-places-on-route', {
         method: 'POST',
@@ -146,8 +98,6 @@ function App() {
 
       const data = await response.json();
       console.log('Server response:', data);
-      console.log('Response type:', typeof data);
-      console.log('Is array:', Array.isArray(data));
       
       // Handle both old and new response formats
       if (Array.isArray(data)) {
@@ -175,9 +125,16 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }
+  };
 
-  function handleAddToRoute(place) {
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  const handleAddToRoute = (place) => {
     // Add the place as a waypoint
     const newWaypoint = {
       location: {
@@ -197,162 +154,216 @@ function App() {
     setSelectedPlace(null);
     
     alert(`Added ${place.name} to your route!`);
-  }
+  };
 
-  function handleRemoveWaypoint(index) {
+  const handleRemoveWaypoint = (index) => {
     setWaypoints(prev => prev.filter((_, i) => i !== index));
-    // Trigger route recalculation with updated waypoints
-    if (currentRoute) {
-      setShouldPlanRoute(true);
-    }
-  }
+  };
 
-  function handlePlanRoute() {
-    console.log('Plan Route button clicked!');
-    console.log('Origin:', origin);
-    console.log('Destination:', destination);
-    
-    if (!origin || !destination) {
+  const handlePlanRoute = () => {
+    if (!origin.trim() || !destination.trim()) {
       alert('Please enter both origin and destination');
       return;
     }
-    
-    if (origin.length < 3 || destination.length < 3) {
-      alert('Please enter at least 3 characters for both origin and destination');
-      return;
-    }
-    
-    console.log('Setting shouldPlanRoute to true');
     setShouldPlanRoute(true);
-  }
-}
+  };
 
-function RouteInputs({ origin, destination, semanticQuery, onOriginChange, onDestinationChange, onSemanticQueryChange, onSearch, isLoading, hasRoute, waypoints, onRemoveWaypoint, onPlanRoute, showTraffic, onToggleTraffic }) {
-  const handleSemanticSearch = useCallback(() => {
-    if (!hasRoute) {
-      alert('Please plan a route first');
-      return;
+  const handleLogoClick = () => {
+    setIsPromptSubmitted(false);
+    setSuggestedPlaces([]);
+    setRecommendedPlaces([]);
+    setSelectedPlace(null);
+    setError('');
+  };
+
+  const handleExitPrompt = (e) => {
+    // Prevent event bubbling if called from button click
+    if (e) {
+      e.stopPropagation();
     }
-    onSearch();
-  }, [hasRoute, onSearch]);
+    setIsPromptSubmitted(false);
+    setSuggestedPlaces([]);
+    setRecommendedPlaces([]);
+    setSelectedPlace(null);
+    setError('');
+  };
+
+  const handleClickOutside = (e) => {
+    // Only handle clicks outside the prompt container
+    if (e.target.classList.contains('click-outside-overlay')) {
+      handleExitPrompt();
+    }
+  };
 
   return (
-    <div className="route-inputs">
-      <div className="input-group">
-        <label>Origin:</label>
-        <PlaceAutocomplete
-          value={origin}
-          onChange={onOriginChange}
-          placeholder="Enter starting location"
-          id="origin-input"
-        />
-      </div>
-      
-      <div className="input-group">
-        <label>Destination:</label>
-        <PlaceAutocomplete
-          value={destination}
-          onChange={onDestinationChange}
-          placeholder="Enter destination"
-          id="destination-input"
-        />
-      </div>
-      
-      <button 
-        onClick={() => onPlanRoute()}
-        className="plan-route-btn"
+    <div className="App">
+      <APIProvider 
+        apiKey={GOOGLE_MAPS_API_KEY}
+        libraries={['places']}
       >
-        Plan Route
-      </button>
-      
-      <div className="route-status">
-        {hasRoute ? '✓ Route planned' : 'Click "Plan Route" after entering addresses'}
-      </div>
-      
-      <div className="traffic-controls">
-        <label className="traffic-toggle">
-          <input
-            type="checkbox"
-            checked={showTraffic}
-            onChange={onToggleTraffic}
-          />
-          <span className="traffic-label">Show Traffic</span>
-        </label>
-      </div>
-      
-      <div className="input-group">
-        <label>What are you looking for?</label>
-        <input
-          type="text"
-          value={semanticQuery}
-          onChange={(e) => onSemanticQueryChange(e.target.value)}
-          placeholder="e.g., good coffee shops, vegan restaurants with outdoor seating"
-        />
-      </div>
-      
-      <button 
-        onClick={handleSemanticSearch} 
-        disabled={isLoading}
-        className="search-btn"
-      >
-        {isLoading ? 'Searching...' : 'Find Places'}
-      </button>
+        <div className="app-container">
+          {/* Full-screen Map Background */}
+          <div className={`map-container ${isPromptSubmitted ? 'map-active' : 'map-blurred'}`}>
+            <Map
+              defaultCenter={mapCenter}
+              defaultZoom={10}
+              style={{ width: '100%', height: '100%' }}
+              gestureHandling="greedy"
+              disableDefaultUI={false}
+            >
+              <MapWithDirections
+                origin={origin}
+                destination={destination}
+                suggestedPlaces={suggestedPlaces}
+                recommendedPlaces={recommendedPlaces}
+                selectedPlace={selectedPlace}
+                onPlaceSelect={setSelectedPlace}
+                onAddToRoute={handleAddToRoute}
+                onRouteCalculated={setCurrentRoute}
+                onRouteStartEndCalculated={setRouteStartEnd}
+                waypoints={waypoints}
+                shouldPlanRoute={shouldPlanRoute}
+                onRoutePlanned={() => setShouldPlanRoute(false)}
+                showTraffic={showTraffic}
+                routeStartEnd={routeStartEnd}
+              />
+            </Map>
+          </div>
 
-      {/* Waypoints List */}
-      {waypoints.length > 0 && (
-        <div className="waypoints-section">
-          <h3>Stops on Route</h3>
-          <div className="waypoints-list">
-            {waypoints.map((waypoint, index) => (
-              <div key={`${waypoint.place_id}-${index}`} className="waypoint-item">
-                <span className="waypoint-name">{waypoint.name}</span>
+          {/* Click outside overlay */}
+          {!isPromptSubmitted && (
+            <div className="click-outside-overlay" onClick={handleClickOutside}></div>
+          )}
+
+          {/* Route Inputs and Prompt Box */}
+          <div className={`prompt-container ${isPromptSubmitted ? 'prompt-collapsed' : 'prompt-centered'}`}>
+            <div className="unified-prompt-window" onClick={(e) => e.stopPropagation()}>
+              <button 
+                onClick={handleExitPrompt}
+                className="exit-button"
+                title="Close"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+              
+              <div className="route-inputs">
+                <div className="input-group">
+                  <label>From:</label>
+                  <PlaceAutocomplete
+                    value={origin}
+                    onChange={setOrigin}
+                    placeholder="Enter starting location"
+                    id="origin-input"
+                  />
+                </div>
+                
+                <div className="input-group">
+                  <label>To:</label>
+                  <PlaceAutocomplete
+                    value={destination}
+                    onChange={setDestination}
+                    placeholder="Enter destination"
+                    id="destination-input"
+                  />
+                </div>
+              </div>
+              
+              <div className="prompt-box">
+                <textarea
+                  value={semanticQuery}
+                  onChange={(e) => setSemanticQuery(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="What else are you looking for along the way? (e.g., 'coffee shops', 'gas stations', 'restaurants with outdoor seating')"
+                  className="prompt-input"
+                  rows={3}
+                />
                 <button 
-                  onClick={() => onRemoveWaypoint(index)}
-                  className="remove-waypoint-btn"
-                  title="Remove from route"
+                  onClick={handleSubmit}
+                  disabled={isLoading || !semanticQuery.trim() || !origin.trim() || !destination.trim()}
+                  className="submit-button"
                 >
-                  ×
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor"/>
+                  </svg>
                 </button>
               </div>
-            ))}
+            </div>
           </div>
+
+          {/* Collapsed Logo */}
+          {isPromptSubmitted && (
+            <div className="collapsed-logo" onClick={handleLogoClick}>
+              <div className="logo-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="currentColor"/>
+                </svg>
+              </div>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <div className="error-message">
+              {error}
+            </div>
+          )}
+
+          {/* Recommendations Panel */}
+          {recommendedPlaces.length > 0 && (
+            <div className="recommendations-panel">
+              <h3>🌟 AI Recommendations</h3>
+              <div className="recommendations-list">
+                {recommendedPlaces.map((place, index) => (
+                  <RecommendationCard
+                    key={place.place_id}
+                    place={place}
+                    rank={index + 1}
+                    onClick={() => setSelectedPlace(place)}
+                    onAddToRoute={() => handleAddToRoute(place)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </APIProvider>
     </div>
   );
 }
 
-function MapWithDirections({ origin, destination, center, suggestedPlaces, recommendedPlaces, selectedPlace, onPlaceSelect, onAddToRoute, onRouteCalculated, onRouteStartEndCalculated, waypoints, shouldPlanRoute, onRoutePlanned, showTraffic, routeStartEnd }) {
+function MapWithDirections({ origin, destination, suggestedPlaces, recommendedPlaces, selectedPlace, onPlaceSelect, onAddToRoute, onRouteCalculated, onRouteStartEndCalculated, waypoints, shouldPlanRoute, onRoutePlanned, showTraffic, routeStartEnd }) {
   const map = useMap();
+  const [directionsService, setDirectionsService] = useState(null);
+  const [directionsRenderer, setDirectionsRenderer] = useState(null);
 
-  // Hold reference to active DirectionsRenderer and TrafficLayer so we can manage them properly
-  const directionsRendererRef = React.useRef(null);
-  const trafficLayerRef = React.useRef(null);
-
-  // Initialize traffic layer once when map is ready
+  // Initialize directions service and renderer
   React.useEffect(() => {
-    if (!map) {
-      return;
-    }
+    if (!map || !window.google) return;
 
-    if (!trafficLayerRef.current) {
-      console.log('Initializing traffic layer');
-      trafficLayerRef.current = new window.google.maps.TrafficLayer();
-    }
+    const service = new window.google.maps.DirectionsService();
+    const renderer = new window.google.maps.DirectionsRenderer({
+      suppressMarkers: true,
+      polylineOptions: {
+        strokeColor: '#1976d2',
+        strokeWeight: 4,
+        strokeOpacity: 0.8
+      }
+    });
 
-    // Toggle traffic layer based on showTraffic prop
-    if (showTraffic) {
-      console.log('Showing traffic layer');
-      trafficLayerRef.current.setMap(map);
-    } else {
-      console.log('Hiding traffic layer');
-      trafficLayerRef.current.setMap(null);
-    }
-  }, [map, showTraffic]);
+    renderer.setMap(map);
+    setDirectionsService(service);
+    setDirectionsRenderer(renderer);
+
+    return () => {
+      renderer.setMap(null);
+    };
+  }, [map]);
 
   // Handle route planning
   React.useEffect(() => {
-    if (!map || !shouldPlanRoute || !origin || !destination) {
+    if (!directionsService || !directionsRenderer || !shouldPlanRoute || !origin || !destination) {
       return;
     }
 
@@ -364,26 +375,6 @@ function MapWithDirections({ origin, destination, center, suggestedPlaces, recom
       return;
     }
 
-    // Clean up previous renderer if it exists
-    if (directionsRendererRef.current) {
-      console.log('Cleaning up previous route');
-      directionsRendererRef.current.setMap(null);
-      directionsRendererRef.current = null;
-    }
-
-    const directionsService = new window.google.maps.DirectionsService();
-    const newRenderer = new window.google.maps.DirectionsRenderer({
-      // Configure for better visual appearance
-      suppressMarkers: true, // We'll show custom start/end markers
-      suppressInfoWindows: false,
-      draggable: false,
-      polylineOptions: {
-        strokeColor: '#4285F4', // Google blue
-        strokeWeight: 6,
-        strokeOpacity: 0.8
-      }
-    });
-    
     console.log(`Requesting directions from "${origin}" to "${destination}"`);
 
     directionsService
@@ -399,10 +390,8 @@ function MapWithDirections({ origin, destination, center, suggestedPlaces, recom
       .then((result) => {
         console.log('Directions request successful');
         
-        // Set the map and directions
-        newRenderer.setMap(map);
-        newRenderer.setDirections(result);
-        directionsRendererRef.current = newRenderer;
+        // Set the directions
+        directionsRenderer.setDirections(result);
         
         // Extract start and end locations for custom markers
         const route = result.routes[0];
@@ -429,33 +418,10 @@ function MapWithDirections({ origin, destination, center, suggestedPlaces, recom
       .catch((err) => {
         console.error('Directions request failed:', err);
         console.log('Make sure both origin and destination are complete, valid addresses');
-        if (newRenderer) {
-          newRenderer.setMap(null);
-        }
         onRouteCalculated(null);
         onRoutePlanned();
       });
-
-    // Only cleanup on unmount, not on every dependency change
-    return () => {
-      console.log('Component unmounting, cleaning up route');
-      if (directionsRendererRef.current) {
-        directionsRendererRef.current.setMap(null);
-      }
-    };
-  }, [map, origin, destination, waypoints, shouldPlanRoute]);
-
-  // Cleanup on component unmount
-  React.useEffect(() => {
-    return () => {
-      if (directionsRendererRef.current) {
-        directionsRendererRef.current.setMap(null);
-      }
-      if (trafficLayerRef.current) {
-        trafficLayerRef.current.setMap(null);
-      }
-    };
-  }, []);
+  }, [map, origin, destination, waypoints, shouldPlanRoute, directionsService, directionsRenderer]);
 
   return (
     <>
@@ -472,8 +438,8 @@ function MapWithDirections({ origin, destination, center, suggestedPlaces, recom
                   <text x="20" y="26" text-anchor="middle" fill="white" font-size="14" font-weight="bold">S</text>
                 </svg>
               `),
-              scaledSize: new window.google.maps.Size(40, 40),
-              anchor: new window.google.maps.Point(20, 20)
+              scaledSize: window.google ? new window.google.maps.Size(40, 40) : null,
+              anchor: window.google ? new window.google.maps.Point(20, 20) : null
             }}
           />
           <Marker
@@ -486,8 +452,8 @@ function MapWithDirections({ origin, destination, center, suggestedPlaces, recom
                   <text x="20" y="26" text-anchor="middle" fill="white" font-size="14" font-weight="bold">E</text>
                 </svg>
               `),
-              scaledSize: new window.google.maps.Size(40, 40),
-              anchor: new window.google.maps.Point(20, 20)
+              scaledSize: window.google ? new window.google.maps.Size(40, 40) : null,
+              anchor: window.google ? new window.google.maps.Point(20, 20) : null
             }}
           />
         </>
@@ -510,8 +476,8 @@ function MapWithDirections({ origin, destination, center, suggestedPlaces, recom
                 <text x="16" y="20" text-anchor="middle" fill="#000" font-size="12" font-weight="bold">${index + 1}</text>
               </svg>
             `),
-            scaledSize: new window.google.maps.Size(32, 32),
-            anchor: new window.google.maps.Point(16, 16)
+            scaledSize: window.google ? new window.google.maps.Size(32, 32) : null,
+            anchor: window.google ? new window.google.maps.Point(16, 16) : null
           }}
         />
       ))}
@@ -532,10 +498,11 @@ function MapWithDirections({ origin, destination, center, suggestedPlaces, recom
             url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
               <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="12" cy="12" r="10" fill="#4285F4" stroke="#1976D2" stroke-width="2"/>
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="white"/>
               </svg>
             `),
-            scaledSize: new window.google.maps.Size(24, 24),
-            anchor: new window.google.maps.Point(12, 12)
+            scaledSize: window.google ? new window.google.maps.Size(24, 24) : null,
+            anchor: window.google ? new window.google.maps.Point(12, 12) : null
           }}
         />
       ))}
@@ -558,65 +525,54 @@ function MapWithDirections({ origin, destination, center, suggestedPlaces, recom
 
 function RecommendationCard({ place, rank, onClick, onAddToRoute }) {
   const formatPriceLevel = (level) => {
-    if (!level) return 'Price not available';
-    return '$'.repeat(level);
+    return level ? '$'.repeat(level) : 'N/A';
   };
 
   return (
     <div className="recommendation-card" onClick={onClick}>
-      <div className="recommendation-rank">#{rank}</div>
-      
-      {place.photo_url && (
-        <div className="recommendation-photo">
-          <img src={place.photo_url} alt={place.name} />
+      <div className="recommendation-rank">
+        <span className="rank-number">{rank}</span>
+        <div className="ai-recommendation-badge">
+          <span className="ai-icon">🤖</span>
+          AI Pick
         </div>
-      )}
+      </div>
+      
+      <div className="recommendation-photo">
+        {place.photos && place.photos[0] ? (
+          <img 
+            src={`https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${place.photos[0].photo_reference}&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`}
+            alt={place.name}
+          />
+        ) : (
+          <div className="no-photo">📷</div>
+        )}
+      </div>
       
       <div className="recommendation-content">
         <h4 className="recommendation-name">{place.name}</h4>
-        
-        <div className="recommendation-reason">
-          💡 <em>{place.recommendation_reason}</em>
-        </div>
+        <p className="recommendation-reason">{place.recommendation_reason}</p>
         
         <div className="recommendation-details">
-          {place.rating && (
-            <div className="rating">
-              <span className="stars">{'⭐'.repeat(Math.floor(place.rating))}</span>
-              <span className="rating-text">{place.rating}</span>
-              {place.user_ratings_total && (
-                <span className="rating-count">({place.user_ratings_total})</span>
-              )}
-            </div>
-          )}
-          
-          {place.price_level && (
-            <div className="price">{formatPriceLevel(place.price_level)}</div>
-          )}
+          <div className="rating">
+            <span className="stars">{'⭐'.repeat(Math.round(place.rating || 0))}</span>
+            <span className="rating-text">{place.rating || 'N/A'}</span>
+            <span className="rating-count">({place.user_ratings_total || 0})</span>
+          </div>
+          <div className="price">{formatPriceLevel(place.price_level)}</div>
         </div>
         
-        <div className="recommendation-address">
-          📍 {place.formatted_address}
-        </div>
+        <div className="recommendation-address">{place.vicinity}</div>
         
         <div className="recommendation-actions">
           <button 
+            className="add-to-route-btn small"
             onClick={(e) => {
               e.stopPropagation();
-              onAddToRoute(place);
+              onAddToRoute();
             }}
-            className="add-to-route-btn small"
           >
             Add to Route
-          </button>
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              onClick();
-            }}
-            className="view-details-btn"
-          >
-            View Details
           </button>
         </div>
       </div>
@@ -626,88 +582,56 @@ function RecommendationCard({ place, rank, onClick, onAddToRoute }) {
 
 function RichInfoWindow({ place, onAddToRoute }) {
   const formatPriceLevel = (level) => {
-    if (!level) return 'Price not available';
-    return '$'.repeat(level);
+    return level ? '$'.repeat(level) : 'N/A';
   };
 
   const formatOpeningHours = (hours) => {
-    if (!hours || !Array.isArray(hours)) return null;
-    
-    // Show today's hours and tomorrow's hours
-    const today = new Date().getDay();
-    const todayHours = hours[today === 0 ? 6 : today - 1]; // Adjust for Monday = 0
-    
-    return todayHours;
+    if (!hours || !hours.open_now) return 'Hours not available';
+    return hours.open_now ? 'Open now' : 'Closed';
   };
 
   return (
     <div className="rich-info-window">
-      {place.photo_url && (
+      {place.photos && place.photos[0] && (
         <div className="place-photo">
-          <img src={place.photo_url} alt={place.name} />
+          <img 
+            src={`https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${place.photos[0].photo_reference}&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`}
+            alt={place.name}
+          />
         </div>
       )}
       
       <div className="place-info">
         <h3>{place.name}</h3>
         
-        {place.recommendation_reason && (
-          <div className="ai-recommendation-badge">
-            <span className="ai-icon">🤖</span>
-            <strong>AI Recommendation:</strong> {place.recommendation_reason}
-          </div>
-        )}
-        
         <div className="place-details">
-          {place.rating && (
-            <div className="rating">
-              <span className="stars">{'⭐'.repeat(Math.floor(place.rating))}</span>
-              <span className="rating-text">{place.rating}</span>
-              {place.user_ratings_total && (
-                <span className="rating-count">({place.user_ratings_total} reviews)</span>
-              )}
-            </div>
-          )}
+          <div className="rating">
+            <span className="stars">{'⭐'.repeat(Math.round(place.rating || 0))}</span>
+            <span className="rating-text">{place.rating || 'N/A'}</span>
+            <span className="rating-count">({place.user_ratings_total || 0} reviews)</span>
+          </div>
           
-          {place.price_level && (
-            <div className="price-level">
-              <strong>Price: </strong>{formatPriceLevel(place.price_level)}
-            </div>
-          )}
+          <div className="price-level">{formatPriceLevel(place.price_level)}</div>
           
-          {place.formatted_address && (
-            <div className="address">
-              <strong>Address: </strong>{place.formatted_address}
-            </div>
-          )}
+          <div className="address">{place.vicinity}</div>
           
-          {place.phone && (
+          {place.formatted_phone_number && (
             <div className="phone">
-              <strong>Phone: </strong>
-              <a href={`tel:${place.phone}`}>{place.phone}</a>
+              <a href={`tel:${place.formatted_phone_number}`}>{place.formatted_phone_number}</a>
             </div>
           )}
           
-          {place.opening_hours && (
-            <div className="hours">
-              <strong>Hours: </strong>{formatOpeningHours(place.opening_hours)}
-            </div>
-          )}
+          <div className="hours">{formatOpeningHours(place.opening_hours)}</div>
           
           {place.website && (
             <div className="website">
-              <a href={place.website} target="_blank" rel="noopener noreferrer">
-                Visit Website
-              </a>
+              <a href={place.website} target="_blank" rel="noopener noreferrer">Visit Website</a>
             </div>
           )}
         </div>
         
         <div className="action-buttons">
-          <button 
-            onClick={() => onAddToRoute(place)}
-            className="add-to-route-btn"
-          >
+          <button className="add-to-route-btn" onClick={onAddToRoute}>
             Add to Route
           </button>
         </div>
