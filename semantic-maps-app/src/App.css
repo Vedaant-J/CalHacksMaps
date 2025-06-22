@@ -1,0 +1,616 @@
+/* Modern, clean styling for Semantic Maps Assistant */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.App {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-container {
+  display: flex;
+  height: 100vh;
+}
+
+/* Control Panel Styling */
+.control-panel {
+  width: 350px;
+  background: #ffffff;
+  border-right: 1px solid #e0e0e0;
+  padding: 20px;
+  overflow-y: auto;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.control-panel h1 {
+  color: #1976d2;
+  margin-bottom: 20px;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.route-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.input-group label {
+  font-weight: 500;
+  color: #333;
+  font-size: 14px;
+}
+
+.input-group input {
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.2s ease;
+}
+
+.input-group input:focus {
+  outline: none;
+  border-color: #1976d2;
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+}
+
+.input-group input::placeholder {
+  color: #999;
+}
+
+.search-btn, .add-to-route-btn, .plan-route-btn {
+  padding: 12px 20px;
+  background: #1976d2;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.search-btn:hover, .add-to-route-btn:hover, .plan-route-btn:hover:not(:disabled) {
+  background: #1565c0;
+}
+
+.plan-route-btn {
+  background: #2e7d32;
+  margin-bottom: 10px;
+}
+
+.plan-route-btn:hover:not(:disabled) {
+  background: #1b5e20;
+}
+
+.plan-route-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.route-status {
+  padding: 10px;
+  background: #f5f5f5;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #666;
+  text-align: center;
+}
+
+.traffic-controls {
+  padding: 10px;
+  background: #e8f5e8;
+  border-radius: 6px;
+  border: 1px solid #c8e6c9;
+}
+
+.traffic-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.traffic-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.traffic-label {
+  color: #2e7d32;
+  user-select: none;
+}
+
+.search-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.error-message {
+  background: #ffebee;
+  color: #c62828;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ffcdd2;
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+/* Map Container */
+.map-container {
+  flex: 1;
+  position: relative;
+}
+
+/* Custom marker styling */
+.custom-marker {
+  font-size: 24px;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.2s ease;
+}
+
+.custom-marker:hover {
+  transform: scale(1.2);
+}
+
+/* Rich Info Window Styling */
+.rich-info-window {
+  max-width: 350px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.place-photo {
+  margin-bottom: 12px;
+}
+
+.place-photo img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.place-info h3 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.place-details {
+  margin-bottom: 16px;
+}
+
+.place-details > div {
+  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.rating {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stars {
+  font-size: 16px;
+}
+
+.rating-text {
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.rating-count {
+  color: #666;
+  font-size: 12px;
+}
+
+.price-level {
+  color: #0f7b0f;
+  font-weight: 500;
+}
+
+.address {
+  color: #666;
+}
+
+.phone a {
+  color: #4285f4;
+  text-decoration: none;
+}
+
+.phone a:hover {
+  text-decoration: underline;
+}
+
+.hours {
+  color: #666;
+}
+
+.website a {
+  color: #4285f4;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.website a:hover {
+  text-decoration: underline;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.add-to-route-btn {
+  background: #4285f4;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  flex: 1;
+  transition: background-color 0.2s;
+}
+
+.add-to-route-btn:hover {
+  background: #3367d6;
+}
+
+/* Waypoints Section */
+.waypoints-section {
+  margin-top: 20px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.waypoints-section h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.waypoints-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.waypoint-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+}
+
+.waypoint-name {
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+}
+
+.remove-waypoint-btn {
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.remove-waypoint-btn:hover {
+  background: #c82333;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .app-container {
+    flex-direction: column;
+  }
+  
+  .control-panel {
+    width: 100%;
+    height: 300px;
+    border-right: none;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  
+  .map-container {
+    height: calc(100vh - 300px);
+  }
+}
+
+/* Loading states */
+.search-btn:disabled {
+  opacity: 0.6;
+}
+
+/* Recommendations Panel */
+.recommendations-panel {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  padding: 20px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+.recommendations-panel h3 {
+  margin: 0 0 16px 0;
+  color: #1976d2;
+  font-size: 18px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recommendations-list {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+}
+
+.recommendation-card {
+  min-width: 300px;
+  background: #f8f9fa;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.recommendation-card:hover {
+  border-color: #FFD700;
+  box-shadow: 0 4px 16px rgba(255, 215, 0, 0.3);
+  transform: translateY(-2px);
+}
+
+.recommendation-rank {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #FFD700;
+  color: #000;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+  border: 2px solid white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.recommendation-photo {
+  width: 100%;
+  height: 120px;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.recommendation-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.recommendation-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0 0 8px 0;
+}
+
+.recommendation-reason {
+  background: #e3f2fd;
+  border-left: 4px solid #2196f3;
+  padding: 8px 12px;
+  margin: 8px 0;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #1565c0;
+  line-height: 1.4;
+}
+
+.recommendation-details {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.recommendation-details .rating {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.recommendation-details .price {
+  color: #0f7b0f;
+  font-weight: 500;
+}
+
+.recommendation-address {
+  font-size: 12px;
+  color: #666;
+  margin: 8px 0;
+  line-height: 1.3;
+}
+
+.recommendation-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.add-to-route-btn.small {
+  padding: 8px 12px;
+  font-size: 12px;
+  flex: 1;
+}
+
+.view-details-btn {
+  background: #f5f5f5;
+  color: #333;
+  border: 1px solid #ddd;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  flex: 1;
+  transition: background-color 0.2s;
+}
+
+.view-details-btn:hover {
+  background: #e9ecef;
+}
+
+/* AI Recommendation Badge in InfoWindow */
+.ai-recommendation-badge {
+  background: linear-gradient(135deg, #FFD700, #FFA500);
+  color: #000;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin: 12px 0;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+}
+
+.ai-icon {
+  margin-right: 6px;
+  font-size: 16px;
+}
+
+/* Enhanced Route Visualization */
+.route-info-panel {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-width: 250px;
+}
+
+.route-info-panel h4 {
+  margin: 0 0 8px 0;
+  color: #1976d2;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.route-info-panel p {
+  margin: 4px 0;
+  font-size: 12px;
+  color: #666;
+}
+
+/* Accessibility improvements */
+button:focus {
+  outline: 2px solid #1976d2;
+  outline-offset: 2px;
+}
+
+input:focus {
+  outline: none;
+}
+
+/* Google Places Autocomplete Styling */
+.pac-container {
+  border-radius: 8px !important;
+  border: 1px solid #e0e0e0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif !important;
+  margin-top: 2px !important;
+}
+
+.pac-item {
+  padding: 12px 16px !important;
+  border-bottom: 1px solid #f0f0f0 !important;
+  cursor: pointer !important;
+  font-size: 14px !important;
+  transition: background-color 0.2s ease !important;
+}
+
+.pac-item:hover {
+  background-color: #f5f5f5 !important;
+}
+
+.pac-item-selected {
+  background-color: #e3f2fd !important;
+}
+
+.pac-item:last-child {
+  border-bottom: none !important;
+}
+
+.pac-item-query {
+  font-weight: 500 !important;
+  color: #333 !important;
+}
+
+.pac-matched {
+  font-weight: 600 !important;
+  color: #1976d2 !important;
+}

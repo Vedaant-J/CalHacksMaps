@@ -1,0 +1,8 @@
+.env
+**/.env
+*/.env
+**/node_modules
+**/venv/*
+**/env.example
+server/env.example
+semantic-maps-app/.env
