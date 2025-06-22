@@ -499,6 +499,40 @@ body {
   color: #2e7d32;
 }
 
+.distance-info {
+  color: #007bff;
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.amenities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.amenity-tag {
+  background: #f0f0f0;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: #666;
+}
+
+.status.open {
+  color: #28a745;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status.closed {
+  color: #dc3545;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .recommendation-address {
   font-size: 12px;
   color: #666;

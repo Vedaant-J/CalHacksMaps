@@ -28,6 +28,23 @@ function App() {
   const [waypoints, setWaypoints] = useState([]);
   const [shouldPlanRoute, setShouldPlanRoute] = useState(false);
   const [isPromptSubmitted, setIsPromptSubmitted] = useState(false);
+  const [pendingSemanticQuery, setPendingSemanticQuery] = useState('');
+
+  // Handle delayed semantic search when route becomes available
+  React.useEffect(() => {
+    if (currentRoute && pendingSemanticQuery && isGenerating) {
+      console.log('Route now available, executing pending semantic search...');
+      handleSemanticSearch(currentRoute, pendingSemanticQuery).then(() => {
+        setPendingSemanticQuery('');
+        setIsGenerating(false);
+      }).catch((error) => {
+        console.error('Error in delayed semantic search:', error);
+        setError('Failed to search for places. Please try again.');
+        setPendingSemanticQuery('');
+        setIsGenerating(false);
+      });
+    }
+  }, [currentRoute, pendingSemanticQuery, isGenerating]);
 
   const handleSubmit = async () => {
     if (!origin.trim() || !destination.trim()) {
@@ -43,38 +60,36 @@ function App() {
       // First, plan the route
       setShouldPlanRoute(true);
       
-      // Wait for route to be calculated
-      await new Promise((resolve, reject) => {
-        const checkRoute = () => {
-          if (currentRoute) {
-            resolve();
-          } else {
-            setTimeout(checkRoute, 100);
-          }
-        };
-        
-        // Timeout after 10 seconds
-        setTimeout(() => {
-          if (!currentRoute) {
-            reject(new Error('Route calculation timeout'));
-          }
-        }, 10000);
-        
-        checkRoute();
-      });
-      
-      // If we have constraints, search for places
+      // If we have constraints, start the search process
       if (semanticQuery.trim()) {
         setIsGenerating(true);
-        await handleSemanticSearch(currentRoute, semanticQuery);
-        setIsGenerating(false);
+        
+        // Wait for route with timeout, but don't fail if it takes too long
+        let routeAvailable = false;
+        let attempts = 0;
+        const maxAttempts = 30; // 3 seconds
+        
+        while (!routeAvailable && attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          routeAvailable = currentRoute !== null;
+          attempts++;
+        }
+        
+                 if (routeAvailable) {
+           console.log('Route ready, starting semantic search...');
+           await handleSemanticSearch(currentRoute, semanticQuery);
+           setIsGenerating(false);
+         } else {
+           console.log('Route still calculating, will search when ready...');
+           // Set a flag to search when route becomes available - don't clear isGenerating yet
+           setPendingSemanticQuery(semanticQuery);
+         }
       }
       
     } catch (err) {
       console.error('Error in handleSubmit:', err);
-      setError('Failed to calculate route. Please try again.');
-      setIsLoading(false);
-      setIsPromptSubmitted(false);
+      setError('Failed to process request. Please try again.');
+      setIsGenerating(false);
     } finally {
       setIsLoading(false);
     }
@@ -633,6 +648,31 @@ function RecommendationCard({ place, rank, onClick, onAddToRoute }) {
     return level ? '$'.repeat(level) : 'N/A';
   };
 
+  const formatDistance = (meters) => {
+    if (!meters || meters === Infinity) return '';
+    if (meters < 1000) {
+      return `${Math.round(meters)}m from route`;
+    } else {
+      return `${(meters / 1000).toFixed(1)}km from route`;
+    }
+  };
+
+  const getAmenities = (place) => {
+    const amenities = [];
+    if (place.takeout) amenities.push('📦 Takeout');
+    if (place.delivery) amenities.push('🚚 Delivery'); 
+    if (place.dine_in) amenities.push('🍽️ Dine-in');
+    if (place.serves_coffee) amenities.push('☕ Coffee');
+    if (place.serves_beer) amenities.push('🍺 Beer');
+    if (place.serves_wine) amenities.push('🍷 Wine');
+    if (place.outdoor_seating) amenities.push('🌞 Outdoor');
+    if (place.wheelchair_accessible_entrance) amenities.push('♿ Accessible');
+    if (place.good_for_children) amenities.push('👶 Kid-friendly');
+    return amenities.slice(0, 3); // Show max 3 amenities
+  };
+
+  const isOpen = place.current_opening_hours?.open_now;
+
   return (
     <div className="recommendation-card" onClick={onClick}>
       <div className="recommendation-rank">
@@ -644,9 +684,9 @@ function RecommendationCard({ place, rank, onClick, onAddToRoute }) {
       </div>
       
       <div className="recommendation-photo">
-        {place.photos && place.photos[0] ? (
+        {place.photo_url ? (
           <img 
-            src={`https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${place.photos[0].photo_reference}&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`}
+            src={place.photo_url}
             alt={place.name}
           />
         ) : (
@@ -665,9 +705,24 @@ function RecommendationCard({ place, rank, onClick, onAddToRoute }) {
             <span className="rating-count">({place.user_ratings_total || 0})</span>
           </div>
           <div className="price">{formatPriceLevel(place.price_level)}</div>
+          {isOpen !== undefined && (
+            <div className={`status ${isOpen ? 'open' : 'closed'}`}>
+              {isOpen ? '🟢 Open' : '🔴 Closed'}
+            </div>
+          )}
         </div>
         
-        <div className="recommendation-address">{place.vicinity}</div>
+        {place.route_distance_m && (
+          <div className="distance-info">{formatDistance(place.route_distance_m)}</div>
+        )}
+        
+        <div className="amenities">
+          {getAmenities(place).map((amenity, index) => (
+            <span key={index} className="amenity-tag">{amenity}</span>
+          ))}
+        </div>
+        
+        <div className="recommendation-address">{place.formatted_address || place.vicinity}</div>
         
         <div className="recommendation-actions">
           <button 
