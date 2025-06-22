@@ -63,7 +63,7 @@ def get_gemini_recommendations(places: List[Dict], query: str) -> Dict[str, Any]
     """Use Gemini to analyze and recommend the best places with explanations."""
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        gemini = genai.GenerativeModel("gemini-pro")
+        gemini = genai.GenerativeModel("gemini-1.5-pro")
         
         # Prepare place data for Gemini
         places_summary = []
@@ -157,7 +157,7 @@ def find_places_on_route(route_query: RouteQuery) -> Dict[str, Any]:
     # --- Step 1: Convert semantic query to text search keywords using Gemini Pro ---
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        gemini = genai.GenerativeModel("gemini-pro")
+        gemini = genai.GenerativeModel("gemini-1.5-pro")
 
         prompt = (
             "You are a geospatial search assistant in a travel planning application.\n"
